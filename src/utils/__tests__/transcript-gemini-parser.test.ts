@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { parseTranscriptWithGeminiText } from "../transcript-gemini-parser";
+import { parseTranscriptWithGemini as parseTranscriptWithGeminiText } from "../transcript-gemini-parser";
 
 // Mock the @google/genai SDK
 vi.mock("@google/genai", () => {
