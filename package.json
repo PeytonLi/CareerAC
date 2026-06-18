@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "turbo run dev",
+    "build": "turbo run build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "turbo run lint"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.52",
@@ -52,6 +52,7 @@
     "jsdom": "^29.0.2",
     "playwright": "^1.59.1",
     "tailwindcss": "^4",
+    "turbo": "^2.9.18",
     "typescript": "^5",
     "typescript-eslint": "^8.58.1",
     "vitest": "^4.1.4"

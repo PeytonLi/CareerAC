@@ -1,12 +1,12 @@
 import type { TranscriptCourse, TranscriptData } from "@/types/transcript";
 
-interface MiniMaxMessage {
+interface DeepSeekMessage {
   role: "system" | "user";
   content: string;
 }
 
 /**
- * Parses transcript text using MiniMax AI model.
+ * Parses transcript text using DeepSeek AI model.
  * Falls back to regex parser if AI fails.
  */
 export async function parseTranscriptWithAI(rawText: string): Promise<TranscriptData> {
@@ -14,10 +14,10 @@ export async function parseTranscriptWithAI(rawText: string): Promise<Transcript
     throw new Error("No readable text found in the transcript. It may be a scanned image or empty.");
   }
 
-  const apiKey = process.env.MINIMAX_API_KEY;
+  const apiKey = process.env.DEEPSEEK_API_KEY;
 
   if (!apiKey) {
-    throw new Error("MINIMAX_API_KEY is not configured");
+    throw new Error("DEEPSEEK_API_KEY is not configured");
   }
 
   const systemPrompt = `You are a transcript parsing expert. Extract all courses from the provided transcript text and return ONLY valid JSON in this exact format:
@@ -43,19 +43,19 @@ Rules:
 - Extract the institution name from the transcript header
 - Return ONLY the JSON, no explanation or markdown`;
 
-  const messages: MiniMaxMessage[] = [
+  const messages: DeepSeekMessage[] = [
     { role: "system", content: systemPrompt },
     { role: "user", content: `Parse this transcript:\n\n${rawText}` }
   ];
 
-  const response = await fetch("https://api.minimaxi.com/v1/text/chatcompletion_v2", {
+  const response = await fetch("https://api.deepseek.com/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${apiKey}`
     },
     body: JSON.stringify({
-      model: "MiniMax-Text-01",
+      model: "deepseek-chat",
       messages,
       max_tokens: 4096,
       temperature: 0.3
@@ -64,39 +64,22 @@ Rules:
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`MiniMax API error: ${response.status} - ${errorText}`);
+    throw new Error(`DeepSeek API error: ${response.status} - ${errorText}`);
   }
 
   const data = (await response.json()) as {
     choices?: Array<{
       message?: {
         content?: string;
-        reasoning_content?: string;
       };
     }>;
-    base_resp?: {
-      status_code: number;
-      status_msg: string;
-    };
   };
-  
-  // Check for MiniMax specific error in base_resp
-  if (data.base_resp && data.base_resp.status_code !== 0) {
-    throw new Error(`MiniMax API business error: ${data.base_resp.status_code} - ${data.base_resp.status_msg}`);
-  }
 
   const content = data.choices?.[0]?.message?.content;
 
   if (!content) {
-    console.error("MiniMax full response for debugging:", JSON.stringify(data, null, 2));
-    
-    // Check if there is reasoning_content that we could potentially use or if it's just empty
-    const reasoning = data.choices?.[0]?.message?.reasoning_content;
-    if (reasoning) {
-      throw new Error("MiniMax returned reasoning but no final content. The model might be stuck in thought.");
-    }
-    
-    throw new Error(`No content returned from MiniMax. Choices length: ${data.choices?.length || 0}. Status code: ${data.base_resp?.status_code}`);
+    console.error("DeepSeek full response for debugging:", JSON.stringify(data, null, 2));
+    throw new Error(`No content returned from DeepSeek. Choices length: ${data.choices?.length || 0}`);
   }
 
   // Parse JSON from response (handle potential markdown code blocks)

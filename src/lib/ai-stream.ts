@@ -1,7 +1,7 @@
 /**
  * AI streaming module.
- * Handles message conversion, MiniMax API calls, and SSE response encoding.
- * This is the ONLY file that knows about the MiniMax wire protocol.
+ * Handles message conversion, DeepSeek API calls, and SSE response encoding.
+ * This is the ONLY file that knows about the DeepSeek wire protocol.
  */
 
 import { createUIMessageStreamResponse } from "ai";
@@ -16,13 +16,17 @@ export interface AnthropicMessage {
   content: Array<{ type: "text"; text: string }>;
 }
 
-interface MiniMaxTextBlock {
-  type?: string;
-  text?: string;
+interface DeepSeekMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
 }
 
-interface MiniMaxMessageResponse {
-  content?: MiniMaxTextBlock[];
+interface DeepSeekMessageResponse {
+  choices?: Array<{
+    message?: { content?: string };
+    delta?: { content?: string };
+    finish_reason?: string | null;
+  }>;
 }
 
 export class MiniMaxApiError extends Error {
@@ -35,33 +39,34 @@ export class MiniMaxApiError extends Error {
   }
 }
 
-function getMiniMaxToken(): string {
-  return (
-    process.env.MINIMAX_API_KEY ??
-    process.env.FIREWORKS_API_KEY ??
-    "YOUR_API_KEY"
-  );
+function getDeepSeekToken(): string {
+  return process.env.DEEPSEEK_API_KEY ?? "YOUR_API_KEY";
 }
 
-function buildMiniMaxRequestBody(
+function buildDeepSeekRequestBody(
   systemPrompt: string,
   messages: AnthropicMessage[],
   stream: boolean,
 ) {
+  const systemMessage: DeepSeekMessage = { role: "system", content: systemPrompt };
+  const convertedMessages: DeepSeekMessage[] = messages.map((msg) => ({
+    role: msg.role,
+    content: msg.content.map((c) => c.text).join(""),
+  }));
+
   return {
-    model: "MiniMax-M2",
-    system: systemPrompt,
-    messages,
+    model: "deepseek-chat",
+    messages: [systemMessage, ...convertedMessages],
     max_tokens: 8192,
     temperature: 1,
     stream,
   };
 }
 
-const MINIMAX_STREAM_TIMEOUT_MS = 30_000;
-const MINIMAX_GENERATE_TIMEOUT_MS = 90_000;
+const DEEPSEEK_STREAM_TIMEOUT_MS = 30_000;
+const DEEPSEEK_GENERATE_TIMEOUT_MS = 90_000;
 
-function getMiniMaxTimeoutMs(stream: boolean): number {
+function getDeepSeekTimeoutMs(stream: boolean): number {
   const envKey = stream
     ? process.env.MINIMAX_STREAM_TIMEOUT_MS
     : process.env.MINIMAX_GENERATE_TIMEOUT_MS;
@@ -71,36 +76,36 @@ function getMiniMaxTimeoutMs(stream: boolean): number {
     return parsed;
   }
 
-  return stream ? MINIMAX_STREAM_TIMEOUT_MS : MINIMAX_GENERATE_TIMEOUT_MS;
+  return stream ? DEEPSEEK_STREAM_TIMEOUT_MS : DEEPSEEK_GENERATE_TIMEOUT_MS;
 }
 
-async function callMiniMax(
+async function callDeepSeek(
   systemPrompt: string,
   messages: AnthropicMessage[],
   stream: boolean,
 ): Promise<Response> {
   const controller = new AbortController();
-  const timeoutMs = getMiniMaxTimeoutMs(stream);
+  const timeoutMs = getDeepSeekTimeoutMs(stream);
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-  let minimaxResponse: Response;
+  let response: Response;
   try {
-    minimaxResponse = await fetch(
-      "https://api.minimaxi.com/anthropic/v1/messages",
+    response = await fetch(
+      "https://api.deepseek.com/chat/completions",
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${getMiniMaxToken()}`,
+          Authorization: `Bearer ${getDeepSeekToken()}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(buildMiniMaxRequestBody(systemPrompt, messages, stream)),
+        body: JSON.stringify(buildDeepSeekRequestBody(systemPrompt, messages, stream)),
         signal: controller.signal,
       },
     );
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       throw new MiniMaxApiError(
-        `MiniMax API timeout after ${timeoutMs}ms`,
+        `DeepSeek API timeout after ${timeoutMs}ms`,
         504,
       );
     }
@@ -109,20 +114,20 @@ async function callMiniMax(
     clearTimeout(timeout);
   }
 
-  if (!minimaxResponse.ok) {
-    const errorText = await minimaxResponse.text();
+  if (!response.ok) {
+    const errorText = await response.text();
     throw new MiniMaxApiError(
-      `MiniMax API error: ${minimaxResponse.status} - ${errorText}`,
-      minimaxResponse.status,
+      `MiniMax API error: ${response.status} - ${errorText}`,
+      response.status,
     );
   }
 
-  return minimaxResponse;
+  return response;
 }
 
 /**
- * Converts UIMessage[] (from @ai-sdk/react) → Anthropic message format
- * for the MiniMax API, filtering out system messages.
+ * Converts UIMessage[] (from @ai-sdk/react) → message format for the DeepSeek API,
+ * filtering out system messages.
  */
 export function convertToAnthropicMessages(
   messages: UIMessage[],
@@ -152,24 +157,24 @@ export function convertToAnthropicMessages(
 }
 
 // ---------------------------------------------------------------------------
-// MiniMax streaming
+// DeepSeek streaming
 // ---------------------------------------------------------------------------
 
 /**
- * Calls the MiniMax API with the assembled system prompt and messages,
+ * Calls the DeepSeek API with the assembled system prompt and messages,
  * then returns a streaming SSE Response suitable for the frontend.
  */
 export async function streamFromMiniMax(
   systemPrompt: string,
   messages: AnthropicMessage[],
 ): Promise<Response> {
-  let minimaxResponse: Response;
+  let deepSeekResponse: Response;
 
   try {
-    minimaxResponse = await callMiniMax(systemPrompt, messages, true);
+    deepSeekResponse = await callDeepSeek(systemPrompt, messages, true);
   } catch (error) {
     if (error instanceof MiniMaxApiError) {
-      console.error("MiniMax API error:", error.status, error.message);
+      console.error("DeepSeek API error:", error.status, error.message);
       return Response.json(
         { error: "AI service error" },
         { status: error.status },
@@ -184,7 +189,7 @@ export async function streamFromMiniMax(
 
   const stream = new ReadableStream({
     async start(controller) {
-      const reader = minimaxResponse.body?.getReader();
+      const reader = deepSeekResponse.body?.getReader();
 
       if (!reader) {
         controller.error(new Error("No response body"));
@@ -209,19 +214,10 @@ export async function streamFromMiniMax(
               if (data === "[DONE]") continue;
 
               try {
-                const parsed = JSON.parse(data);
-                const delta = parsed.delta;
-                let content = "";
+                const parsed = JSON.parse(data) as DeepSeekMessageResponse;
+                const content = parsed.choices?.[0]?.delta?.content ?? "";
 
-                if (delta) {
-                  if (delta.type === "text_delta" && delta.text) {
-                    content = delta.text;
-                  } else if (delta.type === "thinking_delta") {
-                    continue;
-                  }
-                }
-
-                if (!started) {
+                if (!started && content) {
                   started = true;
                   controller.enqueue({ type: "start", messageId });
                   controller.enqueue({ type: "text-start", id: textId });
@@ -256,33 +252,28 @@ export async function generateTextFromMiniMax(
   systemPrompt: string,
   messages: AnthropicMessage[],
 ): Promise<string> {
-  console.log("[MiniMax] Calling API...");
-  const minimaxResponse = await callMiniMax(systemPrompt, messages, false);
-  console.log("[MiniMax] Response received, status:", minimaxResponse.status);
+  console.log("[DeepSeek] Calling API...");
+  const deepSeekResponse = await callDeepSeek(systemPrompt, messages, false);
+  console.log("[DeepSeek] Response received, status:", deepSeekResponse.status);
 
-  let data: MiniMaxMessageResponse;
+  let data: DeepSeekMessageResponse;
   try {
-    data = (await minimaxResponse.json()) as MiniMaxMessageResponse;
-    console.log("[MiniMax] JSON parsed, content blocks:", data.content?.length ?? 0);
+    data = (await deepSeekResponse.json()) as DeepSeekMessageResponse;
+    console.log("[DeepSeek] JSON parsed, choices:", data.choices?.length ?? 0);
   } catch (parseError) {
-    console.error("[MiniMax] JSON parse error:", parseError);
-    const text = await minimaxResponse.text();
-    console.error("[MiniMax] Raw response:", text.substring(0, 500));
+    console.error("[DeepSeek] JSON parse error:", parseError);
     throw new MiniMaxApiError("Failed to parse AI response", 502);
   }
 
-  const text = (data.content ?? [])
-    .filter((block) => block.type === "text" && typeof block.text === "string")
-    .map((block) => block.text ?? "")
-    .join("");
+  const text = data.choices?.[0]?.message?.content ?? "";
 
-  console.log("[MiniMax] Text extracted, length:", text.length);
+  console.log("[DeepSeek] Text extracted, length:", text.length);
 
   if (!text.trim()) {
-    console.error("[MiniMax] No text content in response");
-    throw new MiniMaxApiError("No content returned from MiniMax", 502);
+    console.error("[DeepSeek] No text content in response");
+    throw new MiniMaxApiError("No content returned from DeepSeek", 502);
   }
 
-  console.log("[MiniMax] Returning text, first 200 chars:", text.substring(0, 200));
+  console.log("[DeepSeek] Returning text, first 200 chars:", text.substring(0, 200));
   return text;
 }

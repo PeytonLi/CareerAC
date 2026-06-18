@@ -3,26 +3,30 @@ import { generateTextFromMiniMax } from "@/lib/ai-stream";
 
 describe("generateTextFromMiniMax", () => {
   const originalFetch = globalThis.fetch;
-  const originalApiKey = process.env.MINIMAX_API_KEY;
+  const originalApiKey = process.env.DEEPSEEK_API_KEY;
 
   beforeEach(() => {
-    process.env.MINIMAX_API_KEY = "test-key";
+    process.env.DEEPSEEK_API_KEY = "test-key";
   });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
-    process.env.MINIMAX_API_KEY = originalApiKey;
+    process.env.DEEPSEEK_API_KEY = originalApiKey;
     vi.restoreAllMocks();
   });
 
-  it("returns concatenated text content from the MiniMax response", async () => {
+  it("returns text content from the DeepSeek response", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
+      status: 200,
       json: async () => ({
-        content: [
-          { type: "text", text: "```json\n" },
-          { type: "text", text: '{"ccName":"De Anza College"}' },
-          { type: "text", text: "\n```" },
+        choices: [
+          {
+            message: {
+              role: "assistant",
+              content: "```json\n{\"ccName\":\"De Anza College\"}\n```",
+            },
+          },
         ],
       }),
     });
@@ -39,17 +43,17 @@ describe("generateTextFromMiniMax", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe("https://api.minimaxi.com/anthropic/v1/messages");
+    expect(url).toBe("https://api.deepseek.com/chat/completions");
     expect(init.method).toBe("POST");
     expect(init.headers.Authorization).toBe("Bearer test-key");
 
     const body = JSON.parse(init.body as string);
     expect(body.stream).toBe(false);
-    expect(body.system).toBe("SYSTEM");
-    expect(body.messages).toHaveLength(1);
+    expect(body.messages[0]).toEqual({ role: "system", content: "SYSTEM" });
+    expect(body.messages).toHaveLength(2);
   });
 
-  it("throws a clear error when MiniMax returns a non-OK response", async () => {
+  it("throws a clear error when DeepSeek returns a non-OK response", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 503,
