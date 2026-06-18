@@ -456,23 +456,6 @@ export default function HomePage() {
           <div className="flex flex-wrap items-center justify-center gap-8 sm:gap-12 lg:gap-20">
             <div className="flex flex-col items-center group">
               <div className="relative">
-                <div className="absolute inset-0 bg-blue-500 rounded-full blur-2xl opacity-0 group-hover:opacity-20 transition-opacity"></div>
-                <div className="relative z-10 h-32 w-32 overflow-hidden rounded-full border-4 border-white grayscale shadow-xl transition-all duration-500 group-hover:scale-110 group-hover:grayscale-0 dark:border-zinc-800 sm:h-40 sm:w-40">
-                  <Image
-                    src="/founders/ali.png"
-                    alt="Ali"
-                    width={160}
-                    height={160}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-              </div>
-              <span className="mt-6 text-xl font-bold text-zinc-900 dark:text-white">Ali</span>
-              <span className="text-sm font-medium text-zinc-500 dark:text-zinc-400">Co-founder</span>
-            </div>
-
-            <div className="flex flex-col items-center group">
-              <div className="relative">
                 <div className="absolute inset-0 bg-indigo-500 rounded-full blur-2xl opacity-0 group-hover:opacity-20 transition-opacity"></div>
                 <div className="relative z-10 h-32 w-32 overflow-hidden rounded-full border-4 border-white grayscale shadow-xl transition-all duration-500 group-hover:scale-110 group-hover:grayscale-0 dark:border-zinc-800 sm:h-40 sm:w-40">
                   <Image
